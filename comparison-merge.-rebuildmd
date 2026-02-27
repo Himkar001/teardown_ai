@@ -96,3 +96,148 @@ If you were assembling one canonical teardown from these three responses, the bu
 **ChatGPT** contributes exactly two things worth keeping: hedged requests in L5 and Bloom Filters in L6 — both are concrete, named, correct, and missed by the others. Everything else from ChatGPT is either duplicated better elsewhere or actively wrong (Layer 4).
 
 > **⚠️ The single most important editorial decision:** Strip ChatGPT's Layer 4 entirely before using any of this material. It is the only section across all three responses that would actively mislead an engineer building this system.
+
+
+ V1 → V2 System Prompt Rebuild
+
+---
+
+## V1 → V2 Decision Framework
+
+| Question | Yes/No | If No → Fix This |
+|----------|--------|-----------------|
+| Did all 3 LLMs name specific technologies, or did some give generic answers? | **Partial** | ChatGPT named F1/Beam correctly but Layer 4 was fiction. Gemini was occasionally terse on mechanisms. → Add rule: *"Every technology named must be traceable to a public paper, engineering blog, or documented system. No placeholders like 'custom ML system'."* |
+| Did any LLM hallucinate or make up technologies that don't exist? | **Yes — ChatGPT** | ChatGPT's Layer 4 invented a real-time Gemini reasoning pipeline that cannot exist at YouTube's latency budget. → Add constraint: *"Only name technologies you are confident the company actually uses or would plausibly use at their scale and latency requirements. If uncertain, say so explicitly."* |
+| Was any layer consistently weak across all 3 LLMs? | **Yes — Layer 4** | All three struggled with LLM's actual role. Claude and Gemini were honest but thin. ChatGPT overclaimed badly. → Add a few-shot example for Layer 4 showing: offline enrichment pipeline, async embedding SLA, cold-start use case — and explicitly forbidding real-time LLM serving claims. |
+| Did any LLM correctly say "this layer isn't heavily used for this product"? | **Yes — Claude and Gemini** | ChatGPT failed this entirely for Layer 4. → Strengthen the instruction: *"Not every product uses all 6 layers equally. For each layer, explicitly state whether it is CORE, SUPPORTING, or MINIMAL for this specific product and justify why."* |
+| Was the "hardest engineering problem" analysis insightful or generic? | **Partial** | Claude was specific (counterfactual logging). ChatGPT named hedged requests well in L5 but gave generic metric advice in Overall. Gemini was too terse in Overall. → Add: *"The hardest problem must name the specific technical constraint unique to THIS product's scale, latency, or feedback structure — not a general ML engineering challenge."* |
+| Did the output structure make it easy to scan and compare layers? | **Claude = Yes, others = Partial** | ChatGPT used inconsistent formatting. Gemini was clean but lacked the honesty check sub-section. → Lock in Claude's exact structure as the mandatory template with numbered sub-sections 1–5 per layer. |
+
+---
+
+## V2 System Prompt — Upgraded
+
+```
+You are a senior AI systems architect and ML platform reviewer.
+Your specialty is breaking down real-world AI products into the exact
+data, modeling, infrastructure, and system design layers that make them
+work at scale.
+You do NOT explain AI at a high level.
+You analyze AI systems the way a staff engineer or principal ML engineer
+would in a design review.
+
+[TASK]
+When I give you the name of an AI-powered product, produce a 6-layer
+architectural teardown analyzing how the product works under the hood.
+
+[THE 6 LAYERS — analyze each one separately]
+Layer 1 — Data Foundation
+Layer 2 — Statistics & Analysis
+Layer 3 — Machine Learning Models
+Layer 4 — LLM / Generative AI
+Layer 5 — Deployment & Infrastructure
+Layer 6 — System Design & Scale
+
+[FOR EACH LAYER, OUTPUT ALL OF THE FOLLOWING]
+1. What's happening
+   - 2–3 technically specific sentences
+   - Focus on mechanisms, not outcomes
+   - Every sentence must be specific to THIS product — if it could
+     apply to five other products unchanged, rewrite it
+
+2. Key technologies likely used
+   - Name real tools, frameworks, or system types
+   - Every technology named must be traceable to a public paper,
+     engineering blog, or documented production system
+   - If you are uncertain whether a company uses a specific tool,
+     say: "likely uses X" or "probably uses internal equivalent of X"
+   - NEVER name a technology you cannot justify with at least one
+     plausible technical reason
+
+3. The core engineering challenge at this layer
+   - Must name the specific constraint unique to THIS product's
+     scale, latency, or feedback structure
+   - NOT a general ML engineering statement
+   - Format: "[Problem name]: [why it is uniquely hard for this
+     product compared to a smaller-scale version of the same problem]"
+
+4. Skill required
+   - Phrase as a job description requirement
+   - Must reference the specific challenge from point 3
+
+5. Honesty check — MANDATORY
+   - State explicitly: Is this layer CORE, SUPPORTING, or MINIMAL
+     for this product?
+   - CORE = fundamental to the product working at all
+   - SUPPORTING = improves the product but not load-bearing
+   - MINIMAL = used lightly or not at all
+   - If MINIMAL or SUPPORTING: explain WHY and what is used instead
+   - DO NOT inflate the importance of a layer to fill the template
+   - SPECIFIC RULE FOR LAYER 4: Do not claim LLMs are used in any
+     real-time serving path unless you can cite a specific technical
+     reason why latency and cost constraints would allow it at this
+     product's QPS. Default assumption: LLMs are offline enrichment
+     tools only.
+
+[OVERALL ANALYSIS]
+- Most critical layer: Name it and explain the causal chain — why
+  does failure here cascade to every other layer?
+- Complexity rating: Simple / Moderate / Advanced / Bleeding Edge
+  Justify using: scale, latency budget, feedback loop structure,
+  and system coupling
+- If rebuilding from scratch, the FIRST thing to get right is: ___
+  This must be a specific architectural decision, not a principle.
+  Explain why getting it wrong cannot be fixed retroactively.
+
+[ANTI-HALLUCINATION RULES]
+- If a technology is speculative, prefix it with "likely" or
+  "plausibly"
+- If a claim is based on a public paper or blog, you may reference
+  it (e.g., "per the 2016 YouTube DNN paper")
+- Never describe a pipeline that violates the product's known
+  latency, cost, or scale constraints — even if it sounds impressive
+- If you are unsure about a layer, say so and explain the boundary
+  of your confidence
+
+[RULES]
+- Anti-vagueness: If a sentence could apply to five different AI
+  products, rewrite it
+- No marketing language, no buzzwords without mechanism explanation
+- Prefer concrete tradeoffs over generic benefits
+- Assume internet-scale usage if consumer-facing
+- If multiple architectures are plausible, state the most likely
+  and explain why
+```
+
+---
+
+## Step 3.3 — LLM Selection Decision
+
+| Decision Factor | My Choice | Reason |
+|-----------------|-----------|--------|
+| Which LLM followed my prompt structure most faithfully? | **Claude** | Maintained all 5 sub-sections per layer consistently, including honesty checks that explicitly rated layer importance — ChatGPT and Gemini both drifted from the template. |
+| Which LLM was most technically accurate (least hallucination)? | **Claude + Gemini tied** | Both correctly refused to place LLMs in the real-time serving path; ChatGPT invented a production pipeline that cannot exist at YouTube's latency budget, which is a disqualifying error for a technical teardown. |
+| Which LLM's output was most readable and well-organized? | **Claude** | Every section contained a falsifiable claim, a named tradeoff, and a structured honesty check — making it scannable in a design review context without losing depth. |
+| Which LLM handled the "honesty check" best? | **Claude** | Explicitly stated when a layer was overstated and explained the reasoning — Gemini was honest but terse, ChatGPT failed entirely on Layer 4 by overclaiming rather than admitting uncertainty. |
+
+**Selected LLM for final tool:** Claude
+
+**Why:** Claude produced the most design-review-ready output — every claim was falsifiable, every layer had an explicit importance rating, and it was the only response that named counterfactual logging as the root architectural dependency that all other layers inherit from. The V2 prompt is also written in Claude's natural reasoning style, which means it will extract the most from the upgraded instructions.
+
+---
+
+## What Changed V1 → V2 (Summary)
+
+The four substantive upgrades in V2 that V1 was missing:
+
+### 1. The Anti-Hallucination Gate
+Requiring every named technology to be traceable to a public source. This specifically prevents the ChatGPT Layer 4 failure mode from recurring.
+
+### 2. The CORE / SUPPORTING / MINIMAL Classification
+Forces the model to explicitly rate each layer's importance instead of treating all six as equally load-bearing.
+
+### 3. The Layer 4 Specific Rule
+The default assumption is now *LLMs are offline only unless you can justify real-time use against known latency constraints.* This is the single highest-value addition.
+
+### 4. The "First Thing to Get Right" Constraint
+Must be a specific architectural decision, not a principle. This forces the causal reasoning that made Claude's counterfactual logging answer the strongest overall analysis across all three responses.
